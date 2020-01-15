@@ -1,4 +1,4 @@
-#!/bin/env python3
+#!/usr/bin/env python3
 # Variation of Shamir's Secret Sharing that uses bunch of words to express
 # the secret and the shared secrets.
 # The generated shared mnemonic secrets additionally contain
