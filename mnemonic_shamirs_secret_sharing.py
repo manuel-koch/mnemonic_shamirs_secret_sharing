@@ -60,7 +60,7 @@ def shift_left(n, b, d):
     :param b: Shift by given bits
     :param d: Add this int data
     """
-    if (1 << b) - 1 <= d:
+    if (1 << b) - 1 < d:
         raise ValueError(f"{b} bits too small for data {hex(d)}")
     return (n << b) + d
 
