@@ -105,13 +105,19 @@ def make_random_mnemonic_shares(minimum_shares, nof_shares, prime=PRIME_12TH_MER
     return mnemonic_secret, mnemonic_shares
 
 
-def recover_mnemonic_secret(mnemonic_shares, prime=PRIME_12TH_MERSENNE):
+def recover_mnemonic_secret(mnemonic_shares):
     shares = []
     need_shares = 0
+    prime = PRIME_12TH_MERSENNE
     for ms in mnemonic_shares:
         ms = ms.strip()
-        share = mnemonic_to_number(ms)
-        share, min_shares, idx = unpad_number(share)
+        try:
+            share = mnemonic_to_number(ms)
+            if math.log2(share) > 256:
+                prime = PRIME_13TH_MERSENNE
+            share, min_shares, idx = unpad_number(share)
+        except Exception as e:
+            raise ValueError(f"Invalid share ({e}): {ms}") from e
         need_shares = max(need_shares, min_shares)
         shares.append((idx, share))
     assert (
@@ -162,7 +168,8 @@ def main():
     metavar="N",
     help="Recovering generated secret will require at least N shares ( N must be >= 2 )",
 )
-def generate(nof_shares, min_shares):
+@click.option("-l", "--long", is_flag=True, default=False, help="Generate longer secrets")
+def generate(nof_shares, min_shares, long):
     """
     Generate random mnemonic secret that can be distributed via given number
     of shared mnemonic secrets.
@@ -170,11 +177,14 @@ def generate(nof_shares, min_shares):
     original mnemonic secret.
     """
     w = int(math.log10(nof_shares)) + 1
+
     print(f"Generating random shared secrets using '{min_shares} of {nof_shares}' config...")
     mnemonic_secret, mnemonic_shares = make_random_mnemonic_shares(
-        minimum_shares=min_shares, nof_shares=nof_shares
+        minimum_shares=min_shares,
+        nof_shares=nof_shares,
+        prime=PRIME_13TH_MERSENNE if long else PRIME_12TH_MERSENNE,
     )
-    print(f"Generated Secret :")
+
     mnemonic_secret_wrapped = "\n\t".join(textwrap.wrap(mnemonic_secret))
     print(f"\t{mnemonic_secret_wrapped}")
     print(
