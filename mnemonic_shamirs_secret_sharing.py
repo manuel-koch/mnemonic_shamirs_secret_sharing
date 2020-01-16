@@ -21,9 +21,13 @@ import random
 import re
 import textwrap
 import sys
+import time
 import zlib
+from io import StringIO
 
 import click
+import pyperclip
+from click import Abort
 
 from sss import recover_secret, PRIME_12TH_MERSENNE, PRIME_13TH_MERSENNE, make_random_shares
 from wordlist import words_from_indices, mnemonic_to_indices, RADIX, RADIX_BITS
@@ -168,8 +172,15 @@ def main():
     metavar="N",
     help="Recovering generated secret will require at least N shares ( N must be >= 2 )",
 )
+@click.option(
+    "-c",
+    "--clipboard",
+    is_flag=True,
+    default=False,
+    help="Paste generated secret and shared secrets into clipboard instead of printing them on console",
+)
 @click.option("-l", "--long", is_flag=True, default=False, help="Generate longer secrets")
-def generate(nof_shares, min_shares, long):
+def generate(nof_shares, min_shares, clipboard, long):
     """
     Generate random mnemonic secret that can be distributed via given number
     of shared mnemonic secrets.
@@ -186,13 +197,24 @@ def generate(nof_shares, min_shares, long):
     )
 
     mnemonic_secret_wrapped = "\n\t".join(textwrap.wrap(mnemonic_secret))
-    print(f"\t{mnemonic_secret_wrapped}")
-    print(
-        f"Use at least {min_shares} of the following {nof_shares} shared secrets to recover secret :"
-    )
+    msg = f"""Generated secret :
+\t{mnemonic_secret_wrapped}
+Use at least {min_shares} of the following {nof_shares} shared secrets to recover secret :
+"""
     for i, ms in enumerate(mnemonic_shares):
         ms_wrapped = "\n\t".join(textwrap.wrap(ms))
-        print(f"{i + 1:{w}d}:\n\t{ms_wrapped}")
+        msg += f"\n{i + 1:{w}d}:\n\t{ms_wrapped}"
+
+    if clipboard:
+        print("Generated secret and shared secret copied to clipboard.")
+        pyperclip.copy(msg)
+        for countdown in range(5, 0, -1):
+            print(f"Clearing clipboard in {countdown}...")
+            time.sleep(1)
+        pyperclip.copy("")
+        print(f"Clipboard cleared")
+    else:
+        print(msg)
 
     # test recovering the secret
     for _ in range(nof_shares * 10):
@@ -204,22 +226,61 @@ def generate(nof_shares, min_shares, long):
 
 
 @main.command()
-@click.argument("input", type=click.Path(file_okay=True, dir_okay=False, allow_dash=True))
-def recover(input):
+@click.option(
+    "-c",
+    "--clipboard",
+    is_flag=True,
+    default=False,
+    help="Paste shared secrets from clipboard instead of reading from file or stdin",
+)
+@click.option(
+    "-i",
+    "--interactive",
+    is_flag=True,
+    default=False,
+    help="Read shared secrets interactively from console, hiding entered input",
+)
+@click.argument(
+    "input_path",
+    default=None,
+    type=click.Path(file_okay=True, dir_okay=False, allow_dash=True),
+    required=False,
+)
+def recover(input_path, clipboard, interactive):
     """
     Recover secret from shared secrets read from given file ( use '-' to read from stdin ).
     Reading multiple shared mnemonic secrets from given file.
     One shared secret is build of multiple words.
-    Shared secrets are separated by empty lines.
+    Multiple shared secrets are separated by empty line(s).
     """
-    if input == "-":
+    if input_path == "-":
         print(f"Recovering secret from stdin...")
         mnemonic_shares = read_shared_secrets_from_file(sys.stdin)
-    else:
-        print(f"Recovering secret from {input}...")
-        with open(input) as f:
+    elif input_path:
+        print(f"Recovering secret from {input_path}...")
+        with open(input_path) as f:
             mnemonic_shares = read_shared_secrets_from_file(f)
-    print(f"Found {len(mnemonic_shares)} shared secrets...")
+    elif clipboard:
+        print(f"Recovering secret from clipboard...")
+        mnemonic_shares = read_shared_secrets_from_file(StringIO(pyperclip.paste()))
+        pyperclip.copy("")
+        print(f"Clipboard cleared")
+    elif interactive:
+        mnemonic_shares = []
+        while True:
+            try:
+                s = click.prompt(
+                    f"Enter {'next' if mnemonic_shares else 'a'} shared secret ( hit ctrl+c to continue recovering )",
+                    hide_input=True,
+                ).strip()
+            except Abort:
+                break
+            mnemonic_shares.append(s)
+    else:
+        print("Either provide an input file or use --clipboard or --interactive option !")
+        sys.exit(1)
+
+    print(f"Using {len(mnemonic_shares)} shared secrets for recovering...")
     mnemonic_secret = number_to_mnemonic(recover_mnemonic_secret(mnemonic_shares))
     mnemonic_secret_wrapped = "\n\t".join(textwrap.wrap(mnemonic_secret))
     print(f"Recovered Secret :\n\t{mnemonic_secret_wrapped}")
