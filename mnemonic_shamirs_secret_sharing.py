@@ -32,6 +32,8 @@ from click import Abort
 from sss import recover_secret, PRIME_12TH_MERSENNE, PRIME_13TH_MERSENNE, make_random_shares
 from wordlist import words_from_indices, mnemonic_to_indices, RADIX, RADIX_BITS
 
+CLIPBOARD_TIMEOUT_SEC = 10
+
 
 def number_to_mnemonic(n):
     """Convert given integer to a string of equivalent mnemonic words"""
@@ -152,6 +154,16 @@ def read_shared_secrets_from_file(f):
     return shares
 
 
+def copy_to_clipboard_and_clear(descr, content, timeout=CLIPBOARD_TIMEOUT_SEC):
+    print(f"{descr} copied to clipboard.")
+    pyperclip.copy(content)
+    for countdown in range(timeout, 0, -1):
+        print(f"Clearing clipboard in {countdown}...")
+        time.sleep(1)
+    pyperclip.copy("")
+    print(f"Clipboard cleared")
+
+
 @click.group()
 def main():
     pass
@@ -206,13 +218,7 @@ Use at least {min_shares} of the following {nof_shares} shared secrets to recove
         msg += f"\n{i + 1:{w}d}:\n\t{ms_wrapped}"
 
     if clipboard:
-        print("Generated secret and shared secret copied to clipboard.")
-        pyperclip.copy(msg)
-        for countdown in range(5, 0, -1):
-            print(f"Clearing clipboard in {countdown}...")
-            time.sleep(1)
-        pyperclip.copy("")
-        print(f"Clipboard cleared")
+        copy_to_clipboard_and_clear("Generated secret and shared secret", msg)
     else:
         print(msg)
 
@@ -228,10 +234,17 @@ Use at least {min_shares} of the following {nof_shares} shared secrets to recove
 @main.command()
 @click.option(
     "-c",
-    "--clipboard",
+    "--clipboard-paste",
     is_flag=True,
     default=False,
     help="Paste shared secrets from clipboard instead of reading from file or stdin",
+)
+@click.option(
+    "-C",
+    "--clipboard-copy",
+    is_flag=True,
+    default=False,
+    help="Copy recovered secret to clipboard instead of printing it on console",
 )
 @click.option(
     "-i",
@@ -246,7 +259,7 @@ Use at least {min_shares} of the following {nof_shares} shared secrets to recove
     type=click.Path(file_okay=True, dir_okay=False, allow_dash=True),
     required=False,
 )
-def recover(input_path, clipboard, interactive):
+def recover(input_path, clipboard_paste, clipboard_copy, interactive):
     """
     Recover secret from shared secrets read from given file ( use '-' to read from stdin ).
     Reading multiple shared mnemonic secrets from given file.
@@ -260,11 +273,13 @@ def recover(input_path, clipboard, interactive):
         print(f"Recovering secret from {input_path}...")
         with open(input_path) as f:
             mnemonic_shares = read_shared_secrets_from_file(f)
-    elif clipboard:
-        print(f"Recovering secret from clipboard...")
-        mnemonic_shares = read_shared_secrets_from_file(StringIO(pyperclip.paste()))
-        pyperclip.copy("")
-        print(f"Clipboard cleared")
+    elif clipboard_paste:
+        try:
+            print(f"Recovering secret from shared secrets in clipboard...")
+            mnemonic_shares = read_shared_secrets_from_file(StringIO(pyperclip.paste()))
+        finally:
+            pyperclip.copy("")
+            print(f"Clipboard cleared")
     elif interactive:
         mnemonic_shares = []
         while True:
@@ -282,8 +297,11 @@ def recover(input_path, clipboard, interactive):
 
     print(f"Using {len(mnemonic_shares)} shared secrets for recovering...")
     mnemonic_secret = number_to_mnemonic(recover_mnemonic_secret(mnemonic_shares))
-    mnemonic_secret_wrapped = "\n\t".join(textwrap.wrap(mnemonic_secret))
-    print(f"Recovered Secret :\n\t{mnemonic_secret_wrapped}")
+    if clipboard_copy:
+        copy_to_clipboard_and_clear("Recovered Secret", mnemonic_secret)
+    else:
+        mnemonic_secret_wrapped = "\n\t".join(textwrap.wrap(mnemonic_secret))
+        print(f"Recovered Secret :\n\t{mnemonic_secret_wrapped}")
 
 
 if __name__ == "__main__":
