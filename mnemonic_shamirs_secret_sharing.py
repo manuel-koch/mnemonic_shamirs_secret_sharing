@@ -12,11 +12,13 @@
 #
 #       mnemonic_shamirs_secret_sharing.py generate -m 3 -s 6
 #
-#   Recover mnemonic secret from given number of shared mnemonic secret, stored line-by-line in given file.
+#   Recover mnemonic secret from given number of shared mnemonic secret, stored in given file, multiple
+#   shared secrets separated by empty line(s).
 #
 #       mnemonic_shamirs_secret_sharing.py recover shared_secrets.txt
 #
 import math
+import os
 import random
 import re
 import textwrap
@@ -26,13 +28,28 @@ import zlib
 from io import StringIO
 
 import click
-import pyperclip
 from click import Abort
+import pyperclip
+
+try:
+    import qrcode
+except:
+    qrcode = None
 
 from sss import recover_secret, PRIME_12TH_MERSENNE, PRIME_13TH_MERSENNE, make_random_shares
 from wordlist import words_from_indices, mnemonic_to_indices, RADIX, RADIX_BITS
 
 CLIPBOARD_TIMEOUT_SEC = 10
+
+
+def log(text, is_err=False, is_warn=False):
+    if is_err:
+        c = "red"
+    elif is_warn:
+        c = "yellow"
+    else:
+        c = None
+    click.secho(text, fg=c, err=is_err or is_warn)
 
 
 def number_to_mnemonic(n):
@@ -126,9 +143,10 @@ def recover_mnemonic_secret(mnemonic_shares):
             raise ValueError(f"Invalid share ({e}): {ms}") from e
         need_shares = max(need_shares, min_shares)
         shares.append((idx, share))
-    assert (
-        len(shares) >= need_shares
-    ), f"Got only {len(shares)} shared secrets, need at least {need_shares} shares !"
+    if len(shares) < need_shares:
+        raise ValueError(
+            f"Got only {len(shares)} shared secrets, need at least {need_shares} shares"
+        )
     return recover_secret(shares, prime)
 
 
@@ -155,13 +173,37 @@ def read_shared_secrets_from_file(f):
 
 
 def copy_to_clipboard_and_clear(descr, content, timeout=CLIPBOARD_TIMEOUT_SEC):
-    print(f"{descr} copied to clipboard.")
+    log(f"{descr} copied to clipboard.")
     pyperclip.copy(content)
     for countdown in range(timeout, 0, -1):
-        print(f"Clearing clipboard in {countdown}...")
+        log(f"Clearing clipboard in {countdown}...", is_warn=True)
         time.sleep(1)
     pyperclip.copy("")
-    print(f"Clipboard cleared")
+    log("Clipboard cleared")
+
+
+def generate_qrcode(payload, out_path, fg="black", bg="white"):
+    """
+    Generate QR code PNG and save it to given output path.
+
+    :param payload: Encode given text in QR code
+    :param fg: Named foreground color
+    :param bg: Named background color
+    :param out_path: Save output PNG to path, extension is added automatically
+    """
+    if qrcode is None:
+        log("Unable to generate qr code, python package 'qrcode' not installed", is_err=True)
+        raise NotImplementedError()
+
+    qr = qrcode.QRCode(
+        version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=16, border=8
+    )
+    qr.add_data(payload)
+    qr.make(fit=True)
+    out_path = os.path.abspath(os.path.splitext(out_path)[0] + ".png")
+    img = qr.make_image(fill_color=fg, back_color=bg)
+    img.save(out_path)
+    log(f"QR code saved to {out_path}")
 
 
 @click.group()
@@ -191,8 +233,11 @@ def main():
     default=False,
     help="Paste generated secret and shared secrets into clipboard instead of printing them on console",
 )
+@click.option(
+    "-q", "--qr-code", is_flag=True, default=False, help="Generate QR code PNGs in current directory of generated secret and shared secrets"
+)
 @click.option("-l", "--long", is_flag=True, default=False, help="Generate longer secrets")
-def generate(nof_shares, min_shares, clipboard, long):
+def generate(nof_shares, min_shares, clipboard, qr_code, long):
     """
     Generate random mnemonic secret that can be distributed via given number
     of shared mnemonic secrets.
@@ -208,6 +253,9 @@ def generate(nof_shares, min_shares, clipboard, long):
         prime=PRIME_13TH_MERSENNE if long else PRIME_12TH_MERSENNE,
     )
 
+    if qr_code:
+        generate_qrcode(mnemonic_secret, "master")
+
     mnemonic_secret_wrapped = "\n\t".join(textwrap.wrap(mnemonic_secret))
     msg = f"""Generated secret :
 \t{mnemonic_secret_wrapped}
@@ -216,6 +264,8 @@ Use at least {min_shares} of the following {nof_shares} shared secrets to recove
     for i, ms in enumerate(mnemonic_shares):
         ms_wrapped = "\n\t".join(textwrap.wrap(ms))
         msg += f"\n{i + 1:{w}d}:\n\t{ms_wrapped}"
+        if qr_code:
+            generate_qrcode(ms, f"{i+1:0{w}d}")
 
     if clipboard:
         copy_to_clipboard_and_clear("Generated secret and shared secret", msg)
