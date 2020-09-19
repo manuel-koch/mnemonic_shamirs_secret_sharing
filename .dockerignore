@@ -1,0 +1,6 @@
+.DS_Store
+.gitignore
+.git
+.idea
+.python-version
+__pycache__
