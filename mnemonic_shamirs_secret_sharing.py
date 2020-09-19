@@ -117,15 +117,28 @@ def unpad_number(n):
     return unpadded, a, b
 
 
+def bits_in_number(n):
+    return len(bin(n)[2:])
+
+
 def make_random_mnemonic_shares(minimum_shares, nof_shares, prime=PRIME_12TH_MERSENNE):
+    """
+    Generate random master secret and derive shared secrets from it.
+
+    :param minimum_shares: number of shared secrets to recover master secret
+    :param nof_shares: number shared secrets to generate
+    :param prime: using prime number to derive random master secret
+    :return: tuple of mnemonic representation of master secret and list of shared secrets
+    """
     if minimum_shares > 255 or nof_shares > 255:
         raise ValueError("Can only create up to 255 shares")
     secret, shares = make_random_shares(
         minimum=minimum_shares, shares=int(nof_shares), prime=prime
     )
+    secret_bits = bits_in_number(secret)
     mnemonic_secret = number_to_mnemonic(secret)
     mnemonic_shares = [number_to_mnemonic(pad_number(s, minimum_shares, i)) for i, s in shares]
-    return mnemonic_secret, mnemonic_shares
+    return mnemonic_secret, secret_bits, mnemonic_shares,
 
 
 def recover_mnemonic_secret(mnemonic_shares):
@@ -234,7 +247,11 @@ def main():
     help="Paste generated secret and shared secrets into clipboard instead of printing them on console",
 )
 @click.option(
-    "-q", "--qr-code", is_flag=True, default=False, help="Generate QR code PNGs in current directory of generated secret and shared secrets"
+    "-q",
+    "--qr-code",
+    is_flag=True,
+    default=False,
+    help="Generate QR code PNGs in current directory of generated secret and shared secrets",
 )
 @click.option("-l", "--long", is_flag=True, default=False, help="Generate longer secrets")
 def generate(nof_shares, min_shares, clipboard, qr_code, long):
@@ -247,7 +264,7 @@ def generate(nof_shares, min_shares, clipboard, qr_code, long):
     w = int(math.log10(nof_shares)) + 1
 
     print(f"Generating random shared secrets using '{min_shares} of {nof_shares}' config...")
-    mnemonic_secret, mnemonic_shares = make_random_mnemonic_shares(
+    mnemonic_secret, secret_bits, mnemonic_shares = make_random_mnemonic_shares(
         minimum_shares=min_shares,
         nof_shares=nof_shares,
         prime=PRIME_13TH_MERSENNE if long else PRIME_12TH_MERSENNE,
@@ -257,10 +274,9 @@ def generate(nof_shares, min_shares, clipboard, qr_code, long):
         generate_qrcode(mnemonic_secret, "master")
 
     mnemonic_secret_wrapped = "\n\t".join(textwrap.wrap(mnemonic_secret))
-    msg = f"""Generated secret :
+    msg = f"""Generated secret ( equivalent of {secret_bits} bits ):
 \t{mnemonic_secret_wrapped}
-Use at least {min_shares} of the following {nof_shares} shared secrets to recover secret :
-"""
+Use at least {min_shares} of the following {nof_shares} shared secrets to recover secret:"""
     for i, ms in enumerate(mnemonic_shares):
         ms_wrapped = "\n\t".join(textwrap.wrap(ms))
         msg += f"\n{i + 1:{w}d}:\n\t{ms_wrapped}"
