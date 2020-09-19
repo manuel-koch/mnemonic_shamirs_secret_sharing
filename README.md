@@ -4,7 +4,7 @@ Mnemonic Shamirs Secret Sharing
 Generate and recover master secret using shared secrets.
 
 The algorithm to generate and recover secrets is derived from
-original __Shamir's Secret Sharing__ [^Shamirs Secret Sharing] procedure.
+original __Shamir's Secret Sharing__ [Shamirs Secret Sharing] procedure.
 
 A random master secret will be created and converted into a list of
 short english words that are hard to confuse with any other
@@ -131,5 +131,5 @@ the result will _not_ be the original master secret !
 A single shared secret is of no use, only combination of sufficient number
 of shared secrets can be used to recover master secret.
 
-[^Shamirs Secret Sharing]: Wikipedia https://en.wikipedia.org/wiki/Shamir%27s_Secret_Sharing
-[^Shamirs Secret Sharing Paper]: Shamirs Original Paper https://groups.csail.mit.edu/cis/crypto/classes/6.857/papers/secret-shamir.pdf
+[Shamirs Secret Sharing]: https://en.wikipedia.org/wiki/Shamir%27s_Secret_Sharing "Wikipedia" 
+[Shamirs Secret Sharing Paper]: https://groups.csail.mit.edu/cis/crypto/classes/6.857/papers/secret-shamir.pdf "Shamirs Original Paper" 
